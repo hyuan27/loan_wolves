@@ -1,4 +1,4 @@
-class GNMAPricingEngine:
+class GNMA:
 
     def __init__(self,
         new_spread = 0.0075,
