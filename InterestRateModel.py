@@ -4,7 +4,7 @@ import numpy as np
 
 class HullWhiteModelDummy:
     """
-    Dummy Model for testing. Please define the actuall class below.
+    Dummy Model for testing and example
     """
 
     #Source:http://gouthamanbalaraman.com/blog/hull-white-simulation-quantlib-python.html
