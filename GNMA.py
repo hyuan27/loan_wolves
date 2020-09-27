@@ -39,6 +39,43 @@ class GNMA:
         self.servicing_fee = servicing_fee #Payments of interest and principal are collected by a mortgage servicer, and charge 20 basis point servicing fee to pass over to bond holder
 
 
+    def get_sim_results(self,list_of_attributes = None):
+        """
+        Possible list_of_attributes = 
+        
+        outstanding_bal
+        sch_int_payment 
+        add_int_payment 
+        tot_int_payment 
+        tot_prin_payment
+        sch_prin_payment
+        sch_tot_payment 
+        pre_prin_payment
+        total_payment 
+        gnma_rate
+        ref_rate
+        cpr
+ 
+        Args: 
+            list_of_attrib utes ([type]): If specified will return those attribbutes
+        """ 
+
+        attr_map = { 
+        'outstanding_bal'   : self.outstanding_bal[1:,:]   ,
+        'sch_int_payment'   : self.sch_int_payment[1:,:] ,
+        'add_int_payment'   : self.add_int_payment[1:,:] ,
+        'tot_int_payment'   : self.tot_int_payment[1:,:] ,
+        'tot_prin_payment'  : self.tot_prin_payment[1:,:],
+        'sch_prin_payment'  : self.sch_prin_payment[1:,:],
+        'sch_tot_payment'   : self.sch_tot_payment[1:,:] ,
+        'pre_prin_payment'  : self.pre_prin_payment[1:,:],
+        'total_payment'     : self.total_payment[1:,:]   ,
+        'gnma_rate'         : self.gnma_rate       ,
+        'ref_rate'          : self.ref_rate        ,
+        'cpr'               : self.cpr },
+        
+        return attr_map
+
     def sim_pay_schedule(self,ref_rate,init_prin):
         """
         Simulates monthly cash flows - need to change to annual cash flows
@@ -55,6 +92,7 @@ class GNMA:
         #2. As the rate resets, compute any additional interest rate payments that need to be paid 
 
         
+
         arr_shape = (ref_rate.shape[0] + 1, ref_rate.shape[1])
         self.maturity = ref_rate.shape[0]
         self.maturity_in_yrs = int(self.maturity/12)
@@ -106,7 +144,6 @@ class GNMA:
             self.total_payment[i,:] = self.tot_int_payment[i,:] + self.tot_prin_payment[i,:]
             #Update outstanding balance
             self.outstanding_bal[i,:] = self.outstanding_bal[i-1,:] - self.tot_prin_payment[i,:]
-
 
     def _get_gnma_rate_sch(self,ref_rate):
         #Assuming the ref rate is simulated on an annual basis. So basically the first 12 months will have the same rate.
@@ -174,19 +211,20 @@ class GNMA:
 
 
 
-    def get_pv(self):
+    def get_pv(self, as_of = 0):
         """
         Computes the pv - simulation average of all the cash flows
+        as_of (in years)= Computes pv as of that period. For eg. if 2, then pv of rem total payments as of the end of year 2
         """
-        return np.mean(self._get_pv_by_path())
+        return np.mean(self._get_pv_by_path(as_of))
 
-    def _get_pv_by_path(self):
+    def _get_pv_by_path(self,as_of = 0):
         """
         Computes present value of all the cash flows across each path
         """
-        pv_by_path = np.zeros(self.total_payment)
+        
         dt = 1/12.
-        pv_by_path = np.sum(self.total_payment[1:,:]*np.exp(-np.cumsum(self.ref_rate,axis = 0)*dt), axis = 0)
+        pv_by_path = np.sum(self.total_payment[1 + as_of*12:,:]*np.exp(-np.cumsum(self.ref_rate[as_of*12:,:],axis = 0)*dt), axis = 0)
 
         assert pv_by_path.shape == self.ref_rate.shape[1] #Should be equal to number of paths
 
@@ -246,7 +284,8 @@ if __name__ == "__main__":
 
     g = GNMA()
     g.sim_pay_schedule(ref_rate_mod.T,init_prin)
-    g.print_sample_sim(True)
+    print(g.get_sim_results())
+
 
 
 
