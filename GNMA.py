@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import interest_rate as interest_rate
+import hw as hw
 
 class GNMA:
 
@@ -56,7 +56,8 @@ class GNMA:
 
         
         arr_shape = (ref_rate.shape[0] + 1, ref_rate.shape[1])
-        maturity = ref_rate.shape[0]
+        self.maturity = ref_rate.shape[0]
+        self.maturity_in_yrs = int(self.maturity/12)
 
         self.ref_rate = ref_rate
         self.outstanding_bal = np.zeros(arr_shape)
@@ -77,7 +78,7 @@ class GNMA:
         #The initial payment schedule is created based on the teaser rate.
         init_rate = ref_rate[0,:] #Scalar value
         _lambda = 1/(1 + init_rate/12.)
-        _X = (_lambda/(1 - _lambda))*(1 - _lambda**(12*maturity))
+        _X = (_lambda/(1 - _lambda))*(1 - _lambda**(12*self.maturity_in_yrs))
         self.smm = 1 - (1 - self.cpr)**(1/12.)
         
         assert self.cpr.shape == ref_rate.shape
@@ -86,13 +87,13 @@ class GNMA:
         
         #Create scheduled payment
         self.sch_tot_payment[1,:] = init_prin/_X
-        for i in range(2,maturity+1):
+        for i in range(2,self.maturity+1):
             self.sch_tot_payment[i,:] = self.sch_tot_payment[i-1,:]*(1 - self.smm[i-1,:])
         
         #Initial outstanding balance at the start of the period
         self.outstanding_bal[0,:] = init_prin
         
-        for i in range(1,maturity + 1):
+        for i in range(1,self.maturity + 1):
             #Interest payments
             self.sch_int_payment[i,:] = self.outstanding_bal[i-1,:]*init_rate/12.
             self.add_int_payment[i,:] = self.outstanding_bal[i-1,:]*(self.gnma_rate[i-1,:] - init_rate)/12. 
@@ -113,9 +114,16 @@ class GNMA:
         #Teaser rate for one year 
         gnma_rate[:12,:] = ref_rate[:12,:] + self.new_spread
         #Reset after one year, this reset is capped and floored at both season and lifetime caps
-        gnma_rate[12:,:] = np.minimum(
-            np.maximum(np.minimum(ref_rate[12:,:] + self.seasoned_spread, ref_rate[:-12,:] + self.periodic_cap), ref_rate[:-12,:] - self.periodic_floor),
-                                                            np.ones(ref_rate[12:,:].shape)*ref_rate[0,:] + self.lifetime_cap)
+        for i in range(1,self.maturity_in_yrs):
+            gnma_rate[12*i:12*(i+1),:] = np.minimum(
+            np.maximum(
+                np.minimum(ref_rate[12*i:12*(i+1),:] + self.seasoned_spread, gnma_rate[12*(i-1):12*i,:] + self.periodic_cap), 
+                        gnma_rate[12*(i-1):12*i,:] - self.periodic_floor),
+                                                            np.ones(gnma_rate[12*i:12*(i+1),:].shape)*gnma_rate[0,:] + self.lifetime_cap)
+        
+        #gnma_rate[12:,:] = np.minimum(
+        #    np.maximum(np.minimum(ref_rate[12:,:] + self.seasoned_spread, ref_rate[:-12,:] + self.periodic_cap), ref_rate[:-12,:] - self.periodic_floor),
+        #                                                    np.ones(ref_rate[12:,:].shape)*ref_rate[0,:] + self.lifetime_cap)
 
         return gnma_rate
 
@@ -158,7 +166,7 @@ class GNMA:
 
         assert pv_by_path.shape == self.ref_rate.shape[1] #Should be equal to number of paths
         
-        swap_value_by_path = pv_by_path/(np.sum(np.exp(-np.cumsum(self.ref_rate[:12*timeperiod],axis = 0)*dt),axis = 0)
+        swap_value_by_path = pv_by_path/(np.sum(np.exp(-np.cumsum(self.ref_rate[:12*timeperiod],axis = 0)*dt),axis = 0))
 
         assert swap_value_by_path == self.ref_rate.shape[1] #Should be equal to number of paths
 
@@ -218,7 +226,7 @@ class GNMA:
         print(sim_sample_df)
 
         if export_to_csv:
-            sim_sample_df.to_csv('Sample Sim File.csv') 
+            sim_sample_df.to_csv('Sample Sim File 2.csv') 
 
 if __name__ == "__main__":
     
@@ -226,13 +234,15 @@ if __name__ == "__main__":
     maturity = 30
     init_prin = 125000
     
-    num_paths = 10
-    timestep = 5
-    #Should call the relevant class 
-    CMT_model = interest_rate.CMTRateModel()
-    time,ref_rate = CMT_model.get_sim_paths(num_paths,timestep)
+    num_paths = 100
+    hullwhite = hw.HullWhiteModel()
+    path_cmt, path_ted = hullwhite.simulate_math(num_paths)
+
+    print(path_cmt.shape)
     
-    ref_rate_mod = np.repeat(ref_rate,12,axis = 1)
+    ref_rate_mod = np.repeat(path_cmt,12,axis = 1)
+
+    print(ref_rate_mod.shape)
 
     g = GNMA()
     g.sim_pay_schedule(ref_rate_mod.T,init_prin)
