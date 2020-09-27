@@ -18,7 +18,7 @@ class GNMA:
         periodic_cap = 0.0050,
         lifetime_floor = None,
         periodic_floor = 0.0050,
-        base_CPR = 0.0010,
+        base_CPR = 0.10,
         add_CPR_pct_inc = 0.3,
         foreclosing_charge = 0.0040,
         servicing_fee = 0.0020):
