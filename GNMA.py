@@ -16,7 +16,7 @@ class GNMA:
         
         lifetime_cap = 0.0200,
         periodic_cap = 0.0050,
-        lifetime_floor = None,
+        lifetime_floor = 0.0200,
         periodic_floor = 0.0050,
         base_CPR = 0.10,
         add_CPR_pct_inc = 0.3,
@@ -39,27 +39,30 @@ class GNMA:
         self.servicing_fee = servicing_fee #Payments of interest and principal are collected by a mortgage servicer, and charge 20 basis point servicing fee to pass over to bond holder
 
 
-    def get_sim_results(self,list_of_attributes = None):
-        """
-        Possible list_of_attributes = 
+    def _annualize(self,balances):
+        ann_ = np.zeros((self.maturity_in_yrs,balances.shape[1]))
+        for i in range(self.maturity_in_yrs):
+            ann_[i,:] = np.sum(balances[1+12*i:12*(i+1):,:],axis =0)
         
-        outstanding_bal
-        sch_int_payment 
-        add_int_payment 
-        tot_int_payment 
-        tot_prin_payment
-        sch_prin_payment
-        sch_tot_payment 
-        pre_prin_payment
-        total_payment 
-        gnma_rate
-        ref_rate
-        cpr
- 
-        Args: 
-            list_of_attrib utes ([type]): If specified will return those attribbutes
-        """ 
+        return ann_
 
+    def get_ann_total_payment (self):
+        return self._annualize(self.total_payment)
+    
+    def get_ann_outstanding_bal(self):
+        return self._annualize(self.outstanding_bal)
+
+    def get_ann_tot_int_payment(self):
+        return self._annualize(self.tot_int_payment)
+
+    def get_ann_tot_prin_payment(self):
+        return self._annualize(self.tot_prin_payment)
+    
+    def get_ann_pre_prin_payment(self):
+        return self._annualize(self.pre_prin_payment)
+
+    def get_sim_results(self):
+        
         attr_map = { 
         'outstanding_bal'   : self.outstanding_bal[1:,:]   ,
         'sch_int_payment'   : self.sch_int_payment[1:,:] ,
@@ -152,11 +155,13 @@ class GNMA:
         gnma_rate[:12,:] = ref_rate[:12,:] + self.new_spread
         #Reset after one year, this reset is capped and floored at both season and lifetime caps
         for i in range(1,self.maturity_in_yrs):
-            gnma_rate[12*i:12*(i+1),:] = np.minimum(
+            gnma_rate[12*i:12*(i+1),:] = np.maximum(
+            np.minimum(
             np.maximum(
                 np.minimum(ref_rate[12*i:12*(i+1),:] + self.seasoned_spread, gnma_rate[12*(i-1):12*i,:] + self.periodic_cap), 
                         gnma_rate[12*(i-1):12*i,:] - self.periodic_floor),
-                                                            np.ones(gnma_rate[12*i:12*(i+1),:].shape)*gnma_rate[0,:] + self.lifetime_cap)
+                                                            np.ones(gnma_rate[12*i:12*(i+1),:].shape)*gnma_rate[0,:] + self.lifetime_cap),
+                                                            np.ones(gnma_rate[12*i:12*(i+1),:].shape)*gnma_rate[0,:] - self.lifetime_floor)
         
         #gnma_rate[12:,:] = np.minimum(
         #    np.maximum(np.minimum(ref_rate[12:,:] + self.seasoned_spread, ref_rate[:-12,:] + self.periodic_cap), ref_rate[:-12,:] - self.periodic_floor),
@@ -209,8 +214,6 @@ class GNMA:
 
         return swap_value_by_path
 
-
-
     def get_pv(self, as_of = 0):
         """
         Computes the pv - simulation average of all the cash flows
@@ -226,7 +229,8 @@ class GNMA:
         dt = 1/12.
         pv_by_path = np.sum(self.total_payment[1 + as_of*12:,:]*np.exp(-np.cumsum(self.ref_rate[as_of*12:,:],axis = 0)*dt), axis = 0)
 
-        assert pv_by_path.shape == self.ref_rate.shape[1] #Should be equal to number of paths
+        print(pv_by_path.shape,self.ref_rate.shape[1])
+        assert pv_by_path.shape[0] == self.ref_rate.shape[1] #Should be equal to number of paths
 
         return pv_by_path
 
@@ -268,26 +272,32 @@ class GNMA:
 
 if __name__ == "__main__":
     
-    N = 5
-    maturity = 30
     init_prin = 125000
     
-    num_paths = 100
+    num_paths = 10000
     hullwhite = hw.HullWhiteModel()
     path_cmt, path_ted = hullwhite.simulate_math(num_paths)
 
-    print(path_cmt.shape)
+    #print(path_cmt.shape)
     
     ref_rate_mod = np.repeat(path_cmt,12,axis = 1)
 
-    print(ref_rate_mod.shape)
+    #print(ref_rate_mod.shape)
 
     g = GNMA()
     g.sim_pay_schedule(ref_rate_mod.T,init_prin)
-    print(g.get_sim_results())
+    #print(g.get_sim_results())
 
-
-
+    ann_tot_payment = g.get_ann_total_payment()
+    
+    #print(pv_tot_payment)
+    
+    #pv_tot_payment_paths = g._get_pv_by_path(4)
+    #Plot histogram
+    plt.figure()
+    for i in range(1000):
+        plt.plot(g.gnma_rate[:,i])    
+    plt.show()
 
 
         
