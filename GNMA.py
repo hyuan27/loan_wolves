@@ -42,7 +42,7 @@ class GNMA:
     def _annualize(self,balances):
         ann_ = np.zeros((self.maturity_in_yrs,balances.shape[1]))
         for i in range(self.maturity_in_yrs):
-            ann_[i,:] = np.sum(balances[1+12*i:12*(i+1):,:],axis =0)
+            ann_[i,:] = np.sum(balances[1+12*i:12*(i+1),:],axis = 0)
         
         return ann_
 
@@ -50,7 +50,10 @@ class GNMA:
         return self._annualize(self.total_payment)
     
     def get_ann_outstanding_bal(self):
-        return self._annualize(self.outstanding_bal)
+        ann_ = np.zeros((self.maturity_in_yrs,self.outstanding_bal.shape[1]))
+        for i in range(self.maturity_in_yrs):
+            ann_[i,:] = self.outstanding_bal[12*(i+1),:]
+        return ann_
 
     def get_ann_tot_int_payment(self):
         return self._annualize(self.tot_int_payment)
@@ -60,6 +63,22 @@ class GNMA:
     
     def get_ann_pre_prin_payment(self):
         return self._annualize(self.pre_prin_payment)
+    
+    def get_ann_sch_prin_payment(self):
+        return self._annualize(self.sch_prin_payment)
+
+    def get_ann_sch_int_payment(self):
+        return self._annualize(self.sch_int_payment)
+    
+    def get_ann_add_int_payment(self):
+        return self._annualize(self.add_int_payment)
+
+    def get_ann_outstanding_bal_start(self):
+        """Gives the outstanding balance at the start of the period"""
+        ann_ = np.zeros((self.maturity_in_yrs,self.outstanding_bal.shape[1]))
+        for i in range(self.maturity_in_yrs):
+            ann_[i,:] = self.outstanding_bal[12*(i),:]
+        return ann_
 
     def get_sim_results(self):
         
@@ -117,7 +136,7 @@ class GNMA:
 
         #Some computations to generate the initial payment schedule
         #The initial payment schedule is created based on the teaser rate.
-        init_rate = ref_rate[0,:] #Scalar value
+        init_rate = self.gnma_rate[0,:] #Scalar value
         _lambda = 1/(1 + init_rate/12.)
         _X = (_lambda/(1 - _lambda))*(1 - _lambda**(12*self.maturity_in_yrs))
         self.smm = 1 - (1 - self.cpr)**(1/12.)
@@ -270,38 +289,106 @@ class GNMA:
         if export_to_csv:
             sim_sample_df.to_csv('Sample Sim File 2.csv') 
 
+    ### Methods for creating pretty plots for everything
+
+    def plot_ref_rate(self):
+        plt.figure()
+        for i in range(self.ref_rate.shape[1]):
+            plt.plot(self.ref_rate[:,i])    
+        plt.show()
+
+    def plot_gnma_rate(self):
+        plt.figure()
+        for i in range(self.gnma_rate.shape[1]):
+            plt.plot(self.gnma_rate[:,i])    
+        plt.show()
+
+    def plot_payment(self):
+        
+        x = np.arange(self.maturity)
+        total_payment = np.mean(self.total_payment[1:,:],axis = 1)
+        tot_prin_payment = np.mean(self.tot_prin_payment[1:,:],axis = 1)
+        tot_int_payment = np.mean(self.tot_int_payment[1:,:],axis = 1)
+        
+        plt.figure()
+        plt.stackplot(x,[tot_prin_payment,tot_int_payment])
+        plt.show()
+    
+    def plot_balance(self):
+        
+        x = np.arange(self.maturity)
+        
+        sch_prin_payment = np.mean(self.sch_prin_payment[1:,:],axis = 1)
+        pre_prin_payment = np.mean(self.pre_prin_payment[1:,:],axis = 1)
+        outstanding_bal = np.mean(self.outstanding_bal[1:,:],axis = 1) - sch_prin_payment - pre_prin_payment
+        plt.figure()
+        plt.stackplot(x,[sch_prin_payment,pre_prin_payment,outstanding_bal],
+                            labels = ['Scheduled Principal', 'Prepaid Principal', 'Outstanding Principal'])
+        
+        plt.xlabel('Time (in months)')
+        plt.title('Balance ammortization')
+        plt.legend()
+        plt.show()
+
+    def plot_balance_ann(self):
+        
+        x = np.arange(self.maturity_in_yrs)
+
+        pre_prin_payment = np.mean(self.get_ann_tot_prin_payment(), axis = 1)
+        sch_prin_payment = np.mean(self.get_ann_sch_prin_payment(), axis = 1)
+        outstanding_bal_init = np.mean(self.get_ann_outstanding_bal_start(),axis = 1) - pre_prin_payment - sch_prin_payment
+
+        print(outstanding_bal_init,sch_prin_payment,pre_prin_payment)
+        plt.figure()
+        plt.stackplot(x,[sch_prin_payment,pre_prin_payment,outstanding_bal_init],
+                            labels = ['Scheduled Principal', 'Prepaid Principal', 'Outstanding Principal'])
+        
+        plt.xlabel('Time in Years')
+        plt.title('Balance ammortization')
+        plt.legend()
+        plt.show()
+
+    def plot_payments_ann(self):
+
+        x = np.arange(self.maturity_in_yrs)
+        #outstanding_bal = np.mean(self.get_ann_outstanding_bal(),axis = 1)
+        pre_prin_payment = np.mean(self.get_ann_tot_prin_payment(), axis = 1)
+        sch_prin_payment = np.mean(self.get_ann_sch_prin_payment(), axis = 1)
+        sch_int_payment = np.mean(self.get_ann_sch_int_payment(),axis = 1)
+        add_int_payment = np.mean(self.get_ann_add_int_payment(),axis = 1)
+        
+        
+
+        plt.figure()
+        plt.stackplot(x,[sch_prin_payment,pre_prin_payment,sch_int_payment,add_int_payment],
+                            labels = ['Scheduled Principal', 'Prepaid Principal', 'Scheduled Interest Payment','Additional Interest Payment'])
+        
+        plt.xlabel('Time in Years')
+        plt.title('Payment Schedules (Total in any year)')
+        plt.legend()
+        plt.show()
+
+
+
 if __name__ == "__main__":
     
-    init_prin = 125000
+    init_prin = 100
     
     num_paths = 10000
     hullwhite = hw.HullWhiteModel()
     path_cmt, path_ted = hullwhite.simulate_math(num_paths)
 
-    #print(path_cmt.shape)
-    
     ref_rate_mod = np.repeat(path_cmt,12,axis = 1)
-
-    #print(ref_rate_mod.shape)
 
     g = GNMA()
     g.sim_pay_schedule(ref_rate_mod.T,init_prin)
-    #print(g.get_sim_results())
 
-    ann_tot_payment = g.get_ann_total_payment()
-    
-    #print(pv_tot_payment)
-    
-    #pv_tot_payment_paths = g._get_pv_by_path(4)
-    #Plot histogram
-    plt.figure()
-    for i in range(1000):
-        plt.plot(g.gnma_rate[:,i])    
-    plt.show()
-
-
-        
-
+    #g.plot_balance()        
+    #g.plot_payment()
+    #g.plot_balance_ann()
+    #g.plot_payments_ann()
+    #g.print_sample_sim(True)
+    print(g.get_pv())
 
 
 
