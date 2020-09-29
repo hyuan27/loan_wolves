@@ -179,7 +179,7 @@ class GNMA:
 
 
         new_teaser_rate = ref_rate + self.new_spread
-        cpr = np.where(gnma_rate - new_teaser_rate > self.foreclosing_charge, self.base_CPR*(1 + self.add_CPR_pct_inc), self.base_CPR)
+        cpr = np.where(gnma_rate - new_teaser_rate > self.foreclosing_charge, (self.base_CPR + self.add_CPR_pct_inc), self.base_CPR)
 
         return cpr
 
@@ -360,7 +360,7 @@ def generate_scenarios(bond_class):
     gnma_instances.append(bond_class())
 
     #Scenario2 - CPR = 0 (No prepayments)
-    gnma_instances.append(bond_class(base_CPR=0))
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0))
     
     #Scenario3 - No periodic caps and floors
     gnma_instances.append(bond_class(periodic_cap=INF,periodic_floor=INF)) #Should just be a very big number
@@ -384,25 +384,25 @@ def generate_scenarios(bond_class):
     gnma_instances.append(bond_class(lifetime_floor=INF)) #Should just be a very big number
 
     #Scenario9 - No periodic caps and floors, no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,periodic_cap=INF,periodic_floor=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,periodic_cap=INF,periodic_floor=INF)) #Should just be a very big number
     
     #Scenario10 - No lifetime caps and floors, no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,lifetime_cap=INF, lifetime_floor=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,lifetime_cap=INF, lifetime_floor=INF)) #Should just be a very big number
     
     #Scenario11 - No caps and floors (lifetime and periodic), no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,lifetime_cap=INF, lifetime_floor=INF, periodic_cap=INF, periodic_floor=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,lifetime_cap=INF, lifetime_floor=INF, periodic_cap=INF, periodic_floor=INF)) #Should just be a very big number
     
     #Scenario12 - No periodic caps (floors present), no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,periodic_cap=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,periodic_cap=INF)) #Should just be a very big number
     
     #Scenario13 - No periodic floors (floors caps), no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,periodic_floor=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,periodic_floor=INF)) #Should just be a very big number
     
     #Scenario14 - No lifetime caps (floors present), no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,lifetime_cap=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,lifetime_cap=INF)) #Should just be a very big number
     
     #Scenario15 - No lifetime floor (caps present), no prepayments
-    gnma_instances.append(bond_class(base_CPR=0,lifetime_floor=INF)) #Should just be a very big number
+    gnma_instances.append(bond_class(base_CPR=0,add_CPR_pct_inc = 0,lifetime_floor=INF)) #Should just be a very big number
         
 
     pv = []
@@ -463,7 +463,11 @@ def custom_scenario(custom_ref_rate, name,init_prin):
     print('Repo value ',g.get_pv(3)[0])
     print('PV of int payments ',g.get_pv_int_payments()[0])
     print('PV of prin payments ',g.get_pv_prin_payments()[0])
-    
+    print('CPR paths', g.cpr)
+
+
+
+
 
 if __name__ == "__main__":
     
@@ -482,6 +486,7 @@ if __name__ == "__main__":
     scenario_df_err.to_csv('Scenarios_err_2.csv')
     '''
     #Custom scenarios
+    
     ref_rate_baseline = np.array([[0.0312,0.032,0.0325,0.0328,0.0333,0.0337,0.034,0.0343,0.0345,0.0347]])
     ref_rate_decrease = np.array([[0.0312,0.017857096,0.014390429,0.012803132,0.011204195,0.009781625,0.008536714,0.007449867,0.006501343,0.00567358]])
     ref_rate_increase = np.array([[0.0312,0.044542904,0.051382753,0.056012773,0.05951683,0.062362116,0.064761202,0.066835565,0.068666381,0.070303102]])
@@ -492,19 +497,21 @@ if __name__ == "__main__":
     custom_scenario(ref_rate_decrease, 'Decrease',100)
     print('Increase')
     custom_scenario(ref_rate_increase, 'Increase',100)
-
-    #@Chenming - you can use the below snippet to get pvs
     
+    #@Chenming - you can use the below snippet to get pvs
     '''
+    
     INF = 10000
     init_prin = 100
-    num_paths = 10000
+    num_paths = 1000
     hullwhite = hw.HullWhiteModel()
     path_cmt, path_ted = hullwhite.simulate_math(num_paths)
 
     g = GNMA()
     g.sim_pay_schedule(path_cmt.T,init_prin)
-    
+    g.plot_gnma_rate()
+    '''
+    '''
     print('PV at time 0 is ',g.get_pv())
 
     results = g.get_sim_results()
