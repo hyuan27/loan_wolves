@@ -130,6 +130,7 @@ class GNMA:
         assert ref_rate.shape == self.gnma_rate.shape
         
         
+        
         #Create scheduled payment
         self.sch_tot_payment[1,:] = init_prin/_X
         for i in range(2,self.maturity+1):
