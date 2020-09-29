@@ -79,7 +79,7 @@ class GNMA:
         'total_payment'     : self.total_payment[1:,:]   ,
         'gnma_rate'         : self.gnma_rate       ,
         'ref_rate'          : self.ref_rate        ,
-        'cpr'               : self.cpr },
+        'cpr'               : self.cpr }
         
         return attr_map
 
@@ -130,7 +130,7 @@ class GNMA:
         assert ref_rate.shape == self.gnma_rate.shape
         
         
-        
+
         #Create scheduled payment
         self.sch_tot_payment[1,:] = init_prin/_X
         for i in range(2,self.maturity+1):
@@ -188,19 +188,44 @@ class GNMA:
         Computes the pv - simulation average of all the cash flows
         as_of (in years)= Computes pv as of that period. For eg. if 2, then pv of rem total payments as of the end of year 2
         """
-        return np.mean(self._get_pv_by_path(as_of))
+        vals, num_paths = self._get_pv_by_path(as_of), self._get_pv_by_path(as_of).shape[0]
+        return np.mean(vals), np.std(vals)/np.sqrt(num_paths)
 
     def _get_pv_by_path(self,as_of = 0):
-        """
-        Computes present value of all the cash flows across each path
-        """
-        
+        """Computes present value of all the cash flows across each path"""
         pv_by_path = np.sum(self.total_payment[1 + as_of:,:]*np.exp(-np.cumsum(self.ref_rate[as_of:,:],axis = 0)), axis = 0)
-
         assert pv_by_path.shape[0] == self.ref_rate.shape[1] #Should be equal to number of paths
 
         return pv_by_path
 
+    def get_pv_int_payments(self, as_of = 0):
+        """Computes the pv - simulation average of all the cash flows
+        as_of (in years)= Computes pv as of that period. For eg. if 2, then pv of rem total payments as of the end of year 2
+        """
+        vals, num_paths = self._get_pv_int_payments_by_path(as_of), self._get_pv_int_payments_by_path(as_of).shape[0]
+        return np.mean(vals), np.std(vals)/np.sqrt(num_paths)
+
+    def _get_pv_int_payments_by_path(self,as_of = 0):
+        """Computes present value of all the cash flows across each path"""
+        pv_by_path = np.sum(self.tot_int_payment[1 + as_of:,:]*np.exp(-np.cumsum(self.ref_rate[as_of:,:],axis = 0)), axis = 0)
+        assert pv_by_path.shape[0] == self.ref_rate.shape[1] #Should be equal to number of paths
+
+        return pv_by_path
+
+    def get_pv_prin_payments(self, as_of = 0):
+        """
+        Computes the pv - simulation average of all the cash flows
+        as_of (in years)= Computes pv as of that period. For eg. if 2, then pv of rem total payments as of the end of year 2
+        """
+        vals, num_paths = self._get_pv_prin_payments_by_path(as_of), self._get_pv_prin_payments_by_path(as_of).shape[0]
+        return np.mean(vals), np.std(vals)/np.sqrt(num_paths)
+
+    def _get_pv_prin_payments_by_path(self,as_of = 0):
+        """Computes present value of all the cash flows across each path"""
+        pv_by_path = np.sum(self.tot_prin_payment[1 + as_of:,:]*np.exp(-np.cumsum(self.ref_rate[as_of:,:],axis = 0)), axis = 0)
+        assert pv_by_path.shape[0] == self.ref_rate.shape[1] #Should be equal to number of paths
+
+        return pv_by_path 
 
     def print_sample_sim(self,export_to_csv = False):
         #Create dataframe
@@ -302,26 +327,142 @@ class GNMA:
 
 
 
+def _generate_scenarios_data(g, pv,repo_val,pv_int_payments, pv_prin_payments, ref_rate, init_prin):
+    """Helper function
+
+    Args:
+        g (GNMA): instance of the class
+    """
+    g.sim_pay_schedule(ref_rate.T,init_prin)
+    
+    pv.append(g.get_pv())
+    repo_val.append(g.get_pv(3))
+    pv_int_payments.append(g.get_pv_int_payments())
+    pv_prin_payments.append(g.get_pv_prin_payments())
+
+
+def generate_scenarios(bond_class):
+
+    INF = 10000
+    init_prin = 100
+    num_paths = 10000
+    hullwhite = hw.HullWhiteModel()
+    path_cmt, path_ted = hullwhite.simulate_math(num_paths)
+
+    scenario = ['Baseline', 'No Prepayments (CPR = 0)', 'No periodic caps and floors', 'No lifetime caps and floors',
+                'No caps and floors', 'No periodic caps','No periodic floors','No lifetime caps','No lifetime floors']
+    
+    gnma_instances = []
+    
+    #Scenario1 - Baseline
+    gnma_instances.append(bond_class())
+
+    #Scenario2 - CPR = 0 (No prepayments)
+    gnma_instances.append(bond_class(base_CPR=0))
+    
+    #Scenario3 - No periodic caps and floors
+    gnma_instances.append(bond_class(periodic_cap=INF,periodic_floor=INF)) #Should just be a very big number
+    
+    #Scenario4 - No lifetime caps and floors
+    gnma_instances.append(bond_class(lifetime_cap=INF, lifetime_floor=INF)) #Should just be a very big number
+    
+    #Scenario5 - No caps and floors (lifetime and periodic)
+    gnma_instances.append(bond_class(lifetime_cap=INF, lifetime_floor=INF, periodic_cap=INF, periodic_floor=INF)) #Should just be a very big number
+    
+    #Scenario6 - No periodic caps (floors present)
+    gnma_instances.append(bond_class(periodic_cap=INF)) #Should just be a very big number
+    
+    #Scenario7 - No periodic floors (floors caps)
+    gnma_instances.append(bond_class(periodic_floor=INF)) #Should just be a very big number
+    
+    #Scenario8 - No lifetime caps (floors present)
+    gnma_instances.append(bond_class(lifetime_cap=INF)) #Should just be a very big number
+    
+    #Scenario8 - No lifetime floor (caps present)
+    gnma_instances.append(bond_class(lifetime_floor=INF)) #Should just be a very big number
+        
+
+    pv = []
+    repo_val = [] #At the end of 3 years
+    pv_int_payments = []
+    pv_prin_payments = []
+
+    pv_err = []
+    repo_val_err = [] #At the end of 3 years
+    pv_int_payments_err = []
+    pv_prin_payments_err = []
+
+    
+    for g in gnma_instances:
+        g.sim_pay_schedule(path_cmt.T,init_prin)
+        #Append means
+        pv.append(g.get_pv()[0])
+        repo_val.append(g.get_pv(3)[0])
+        pv_int_payments.append(g.get_pv_int_payments()[0])
+        pv_prin_payments.append(g.get_pv_prin_payments()[0])
+        #Append std errs
+        pv_err.append(g.get_pv()[1])
+        repo_val_err.append(g.get_pv(3)[1])
+        pv_int_payments_err.append(g.get_pv_int_payments()[1])
+        pv_prin_payments_err.append(g.get_pv_prin_payments()[1])
+
+
+    #Put them in a dataframe
+
+    scenario_df = pd.DataFrame({'Scenario': scenario,
+    'PV of bond': pv,
+    'Repo Value (3 yrs)': repo_val,
+    'PV of int payments': pv_int_payments,
+    'PV of prin payments': pv_prin_payments
+    })
+
+    scenario_df_err = pd.DataFrame({'Scenario': scenario,
+    'PV of bond': pv_err,
+    'Repo Value (3 yrs)': repo_val_err,
+    'PV of int payments': pv_int_payments_err,
+    'PV of prin payments': pv_prin_payments_err
+    })
+    
+    
+    return scenario_df, scenario_df_err, gnma_instances
+
+
 if __name__ == "__main__":
     
-    init_prin = 100
+    #g.print_sample_sim(True)
     
+    #g.plot_payments()
+    #g.plot_balance()
+    
+
+    scenario_df,scenario_df_err, gnma_instances = generate_scenarios(GNMA)    
+
+    print(scenario_df)
+    print(scenario_df_err)
+
+    scenario_df.to_csv('Scenarios_vals.csv')
+    scenario_df_err.to_csv('Scenarios_err.csv')
+
+    #@Chenming - you can use the below snippet to get pvs
+    '''
+    
+
+    INF = 10000
+    init_prin = 100
     num_paths = 10000
     hullwhite = hw.HullWhiteModel()
     path_cmt, path_ted = hullwhite.simulate_math(num_paths)
 
     g = GNMA()
     g.sim_pay_schedule(path_cmt.T,init_prin)
-
-    #g.print_sample_sim(True)
     
-    g.plot_payments()
-    g.plot_balance()
-    
-    #print('PV at time 0 is ',g.get_pv())
+    print('PV at time 0 is ',g.get_pv())
 
+    results = g.get_sim_results()
+    #print(type(results))
+    ref_rate = results['ref_rate']
+    total_payment = g.get_ann_total_payment()
+    pv = np.mean(np.sum(total_payment*np.exp(-np.cumsum(ref_rate,axis = 0)), axis = 0))
 
-
-
-
-
+    print(pv)
+    '''
