@@ -39,38 +39,33 @@ class Deal:
 
     def get_client_disc_pnl(self):
         """At the end of 3 years based on sum of all cash flows"""
-        pass
-        
+        disc_paths = np.exp(-np.cumsum(self.path_cmt[:3,:],axis = 0))
+        disc_pnl = np.sum(disc_paths*self.get_client_cash_flow(),axis = 0)
+        disc_pnl -= self.init_prin
+        return disc_pnl
+    
+    def get_client_cash_flow(self):
+        """Total cash flows to client by period"""
+        return self.get_client_cash_flow_po() + self.get_client_cash_flow_strategy() + self.get_client_eop_cash_flow()
+
     def get_client_eop_cash_flow(self):
         #Repo price that the client pays
         eop_cash_flows = np.zeros((3,self.num_paths))
         eop_cash_flows[2,:] = self.repo_price()
         return eop_cash_flows
-
-    def get_client_cash_flow(self):
-        """Total cash flows to client by period"""
-        return self.get_client_cash_flow_po() + self.get_client_cash_flow_strategy()
-
+    
     def get_client_cash_flow_po(self):
         """Cash flow from Principal payments"""
         return self.tot_prin_payment[:3,:]
 
-    def ac(self,strat_func):
-        strat_cash_flows = np.zeros(self.num_paths,3)
-        
-        strat1 = self.const_notional_spread_over_libor
-        strat1_args = {
-            'fixed_spread': 0.02
-        }
-        
-        strat_fun_arg = {'strat_func':(self.const_notional_spread_over_libor, {})
-
-        }
-        for func, args in strat_func:
-            strat_cash_flows += func(args)
-            
-        return strat_cash_flows
+    def get_client_cash_flow_strategy(self):
+        return self.const_notional_spread_over_libor(fixed_spread = 0,notional = np.array([100,82,55]))
     
+
+    def get_client_sop_cash_flow(self):
+        sop_cash_flows = np.zeros((3,self.num_paths))
+        sop_cash_flows[0,:] = self.init_prin
+        return sop_cash_flows
 
     #################################
     # Methods for firm cash flows!! 
@@ -79,12 +74,22 @@ class Deal:
     def get_firm_disc_pnl(self):
         """At the end of 3 years based on sum of all cash flows"""
         #return np.sum(self.get_firm_cash_flow(),axis = 0)
-        pass
+        disc_paths = np.exp(-np.cumsum(self.path_cmt[:3,:],axis = 0))
+        disc_pnl = np.sum(disc_paths*self.get_firm_cash_flow(),axis = 0)
+        hedge_val = np.sum(disc_paths*self.get_firm_cash_flow_hedge(),axis=0)
+        #We would pay for the hedge at time 0, so subtract that value
+        disc_pnl -= hedge_val
+        #We would sell the bond at the expected future price at year 3
+        disc_val_of_repo = self.g._get_pv_by_path(3)*disc_paths[2,:]
+        disc_pnl += disc_val_of_repo
+        return disc_pnl
+    
 
     def get_firm_cash_flow(self):
         """Total cash flows to firm by period"""
         #Interest + Cash from hedge
-        return self.get_firm_cash_flow_io() + self.get_firm_cash_flow_strategy() + self.get_firm_cash_flow_hedge()    
+        return self.get_firm_cash_flow_io() + self.get_firm_cash_flow_strategy() + self.get_firm_cash_flow_hedge()  \
+                                        + self.get_firm_eop_cash_flow()  
     
 
     def get_firm_cash_flow_io(self):
@@ -92,27 +97,35 @@ class Deal:
         return self.tot_int_payment[:3,:] - self.servicing_charge[:3,:]
 
     
-    def get_firm_cash_flow_strategy(self,**strat_func):
+    def get_firm_cash_flow_strategy(self):
         """ To be determined """
-        strat_cash_flows = np.zeros(self.num_paths,3)
-        for func, args in strat_func:
-            strat_cash_flows += func(args)
-            
-        return strat_cash_flows
+        return -1*self.const_notional_spread_over_libor(fixed_spread = 0,notional = np.array([100,82,55]))
     
-    def get_firm_cash_flow_hedge(self,**hedge_func):
+    def get_firm_cash_flow_hedge(self):
         #This is to be determined
-        hedge_cash_flows = np.zeros((self.num_paths,3))
-        for func, args in hedge_func:
-            hedge_cash_flows += func(args)
-            
+        hedge_cash_flows = np.zeros((3,self.num_paths))
+        hedge_cash_flows[1,:] = self.hedge_margrabe_option(K=1,notional=82,periods=1)
+        hedge_cash_flows[2,:] = self.hedge_margrabe_option(K=1,notional=55,periods=2) + self.hedge_float_rate_note(notional=10)
+
         return hedge_cash_flows
        
     def get_firm_eop_cash_flow(self):
         #Firm pays repo to client and gets out of hedged pos
         eop_cash_flows = np.zeros((3,self.num_paths))
-        eop_cash_flows[2,:] = self.repo_price()
+        eop_cash_flows[2,:] = -1*self.repo_price()
         return eop_cash_flows
+
+    
+    def get_firm_sop_cash_flow(self):
+        #Firm gets money from client and puts on hedges 
+        sop_cash_flows = np.zeros((3,self.num_paths))
+        hedge_cf = self.get_firm_cash_flow_hedge()
+
+        sop_cash_flows[0,:] = self.init_prin() - np.sum(
+            hedge_cf[:,:]*np.exp(-np.cumsum(self.path_cmt[:3,:],axis = 0)), axis = 0)
+
+        return sop_cash_flows
+
 
 
     ###################################
@@ -120,7 +133,8 @@ class Deal:
     ###################################
     def repo_price(self):
         """ Repo price """
-        repo_price = g._get_pv_by_path(as_of=3)
+        #repo_price = g._get_pv_by_path(as_of=3)
+        repo_price = 32
         return repo_price
         
     
@@ -136,12 +150,10 @@ class Deal:
 
 
     # 2.Constant Notional spread over LIBOR
-    def const_notional_spread_over_libor(self,fixed_spread,notional = None):
+    def const_notional_spread_over_libor(self,fixed_spread,notional = np.array([100,82,55])):
         #Pays spread over libor
-        notional = self._get_avg_outstanding_balance()
-        print(notional)
-        hedge_cash_flows = np.zeros(self.num_paths,3)
-        return notional*(self.libor_rate[:3,:]+ self.fixed_spread)
+        cf = (self.libor_rate[:3,:]+ fixed_spread).T*notional
+        return cf.T
 
     def _get_avg_outstanding_balance(self):
         bal = np.zeros((3,self.num_paths))
@@ -152,7 +164,7 @@ class Deal:
     #3. Varying notional spread over LIBOR
     def varying_notional_spread_over_libor(self,fixed_spread, notional ):
         #Based on outstanding balance on the bond
-        return notional.T[:,:3]*(self.libor_rate[:,:3]+ self.fixed_spread)
+        return notional.T[:,:3]*(self.libor_rate[:,:3]+ fixed_spread)
 
     ####################################
     # Firm strategies for hedging 
@@ -232,21 +244,57 @@ class Deal:
         years = ['Year 1', 'Year 2', 'Year 3']
         df = pd.DataFrame({
             'Year': years,            
-            'Firm Exp. Interest Payments': self.get_firm_cash_flow_io(),
-            'Firm Exp. Swap/Swaption Payments': self.get_firm_cash_flow_strategy(),
-            'Firm Exp. Hedge cash flow': self.get_firm_cash_flow_hedge(),
-            'Firm Repo': self.get_firm_eop_cash_flow(),
-            'Firm Total': self.get_firm_cash_flow(),
-            'Client Exp. Principal Payments': self.get_client_cash_flow_po(),
-            'Client Exp. Swap/Swaption Payments': self.get_client_cash_flow_strategy(),
-            'Client Repo': self.get_client_eop_cash_flow(),
-            'Client Total': self.get_firm_cash_flow()
+            'Firm Exp. Interest Payments':          np.mean(self.get_firm_cash_flow_io(),axis = 1),
+            'Firm Exp. Swap Payments':              np.mean(self.get_firm_cash_flow_strategy(),axis = 1),
+            'Firm Exp. Hedge cash flow':            np.mean(self.get_firm_cash_flow_hedge(),axis = 1),
+            'Firm Repo':                            np.mean(self.get_firm_eop_cash_flow(),axis = 1),
+            'Firm Total':                           np.mean(self.get_firm_cash_flow(),axis = 1),
+            'Client Exp. Principal Payments':       np.mean(self.get_client_cash_flow_po(),axis = 1),
+            'Client Exp. Swap/Swaption Payments':   np.mean(self.get_client_cash_flow_strategy(),axis = 1),
+            'Client Repo':                          np.mean(self.get_client_eop_cash_flow(),axis = 1),
+            'Client Total':                         np.mean(self.get_client_cash_flow(),axis = 1)
         })
         
         print(df)
 
         if export_to_csv:
             df.to_csv('Cash_flows.csv')
+    
+    
+    def get_firm_and_client_cash_flows_disc(self,export_to_csv = False):
+        
+        years = ['Year 1', 'Year 2', 'Year 3']
+
+        disc_paths = np.exp(-np.cumsum(self.path_cmt[:3,:],axis = 0))
+
+        get_firm_cash_flow_io = self.get_firm_cash_flow_io()*disc_paths
+        get_firm_cash_flow_strategy = self.get_firm_cash_flow_strategy()*disc_paths
+        get_firm_cash_flow_hedge = self.get_firm_cash_flow_hedge()*disc_paths
+        get_firm_eop_cash_flow = self.get_firm_eop_cash_flow()*disc_paths
+        get_firm_cash_flow = self.get_firm_cash_flow()*disc_paths
+        get_client_cash_flow_po = self.get_client_cash_flow_po()*disc_paths
+        get_client_cash_flow_strategy = self.get_client_cash_flow_strategy()*disc_paths
+        get_client_eop_cash_flow = self.get_client_eop_cash_flow()*disc_paths
+        get_client_cash_flow = self.get_client_cash_flow()*disc_paths
+
+
+        df_disc = pd.DataFrame({
+            'Year': years,            
+            'Firm Exp. Interest Payments':          np.mean(get_firm_cash_flow_io,axis = 1),
+            'Firm Exp. Swap Payments':              np.mean(get_firm_cash_flow_strategy,axis = 1),
+            'Firm Exp. Hedge cash flow':            np.mean(get_firm_cash_flow_hedge,axis = 1),
+            'Firm Repo':                            np.mean(get_firm_eop_cash_flow,axis = 1),
+            'Firm Total':                           np.mean(get_firm_cash_flow,axis = 1),
+            'Client Exp. Principal Payments':       np.mean(get_client_cash_flow_po,axis = 1),
+            'Client Exp. Swap/Swaption Payments':   np.mean(get_client_cash_flow_strategy,axis = 1),
+            'Client Repo':                          np.mean(get_client_eop_cash_flow,axis = 1),
+            'Client Total':                         np.mean(get_client_cash_flow,axis = 1)
+        })
+        
+        print(df_disc)
+
+        if export_to_csv:
+            df_disc.to_csv('Cash_flows_disc_2.csv')
     
 
 if __name__ == "__main__":
@@ -259,11 +307,19 @@ if __name__ == "__main__":
 
     g = GNMA.GNMA()
     g.sim_pay_schedule(path_cmt.T,init_prin)
+    
+    
     print('PV at time 0 is ',g.get_pv())
     print('Repo price is ',g.get_pv(3))
+    
 
     print(path_ted.shape)
     d = Deal(g,path_ted.T)
+
+    disc = np.exp(-np.cumsum(d.path_cmt[:3,:],axis = 0))
+    print('Discounted Firm valued Repo price is ',g.get_pv(3))
+    print('Discounted Firm valued Repo price is ',np.mean(g._get_pv_by_path(3)*disc[2,:]))
+
     
     print(np.mean(d.get_firm_cash_flow_io(),axis = 1))
     print(np.mean(d.get_client_cash_flow_po(),axis = 1))
@@ -285,8 +341,25 @@ if __name__ == "__main__":
 
     print('Hedged values')
     print('Margrabe values')
-    print(np.mean(d.hedge_margrabe_option(1,55,2)))
+    print(np.mean(d.hedge_margrabe_option(1,82,1)))
     print(np.mean(d.hedge_float_rate_note(10)))
 
+    #d.get_firm_and_client_cash_flows(False)
+    #d.get_firm_and_client_cash_flows_disc(True)
     
-    
+    print('Firm discounted PNL')
+    print(np.mean(d.get_firm_disc_pnl()))
+
+    print('Client discounted PNL')
+    print(np.mean(d.get_client_disc_pnl()))
+
+    #Henry - look at this!
+    plt.hist(d.get_firm_disc_pnl(),density=True)
+    plt.xlabel('Profit')
+    plt.title('PNL for FIRM')
+    plt.show()
+
+    plt.hist(d.get_client_disc_pnl(),density=True)
+    plt.xlabel('Profit')
+    plt.title('PNL for CLIENT')
+    plt.show()
