@@ -68,7 +68,7 @@ class GNMA:
     def get_sim_results(self):
         
         attr_map = { 
-        'outstanding_bal'   : self.outstanding_bal[1:,:]   ,
+        'outstanding_bal'   : self.outstanding_bal[1:,:] ,
         'sch_int_payment'   : self.sch_int_payment[1:,:] ,
         'add_int_payment'   : self.add_int_payment[1:,:] ,
         'tot_int_payment'   : self.tot_int_payment[1:,:] ,
@@ -77,9 +77,11 @@ class GNMA:
         'sch_tot_payment'   : self.sch_tot_payment[1:,:] ,
         'pre_prin_payment'  : self.pre_prin_payment[1:,:],
         'total_payment'     : self.total_payment[1:,:]   ,
+        'servicing_charge'  : self.servicing_charge[1:,:],
         'gnma_rate'         : self.gnma_rate       ,
         'ref_rate'          : self.ref_rate        ,
-        'cpr'               : self.cpr }
+        'cpr'               : self.cpr              ,
+        'init_prin'         : self.init_prin}
         
         return attr_map
 
@@ -113,6 +115,8 @@ class GNMA:
         self.sch_tot_payment = np.zeros(arr_shape)
         self.pre_prin_payment = np.zeros(arr_shape)
         self.total_payment = np.zeros(arr_shape)
+        self.servicing_charge = np.zeros(arr_shape)
+        self.init_prin = init_prin
 
         #Get the rates for GNMA bonds based on simulated ref rate
         self.gnma_rate = self._get_gnma_rate_sch(ref_rate)
@@ -144,6 +148,7 @@ class GNMA:
             self.sch_int_payment[i,:] = self.outstanding_bal[i-1,:]*init_rate
             self.add_int_payment[i,:] = self.outstanding_bal[i-1,:]*(self.gnma_rate[i-1,:] - init_rate)
             self.tot_int_payment[i,:] = self.sch_int_payment[i,:] + self.add_int_payment[i,:]
+            self.servicing_charge[i,:] = self.outstanding_bal[i-1,:]*self.servicing_fee
             #Principal payments
             self.sch_prin_payment[i,:] =  np.minimum(self.sch_tot_payment[i,:] - self.sch_int_payment[i,:], self.outstanding_bal[i-1,:])
             self.pre_prin_payment[i,:] = (self.outstanding_bal[i-1,:] - self.sch_prin_payment[i,:])*self.cpr[i-1,:]
@@ -476,17 +481,17 @@ if __name__ == "__main__":
     #g.plot_payments()
     #g.plot_balance()
     
-    '''
+    
     scenario_df,scenario_df_err, gnma_instances = generate_scenarios(GNMA)    
 
     print(scenario_df)
     print(scenario_df_err)
 
-    scenario_df.to_csv('Scenarios_vals_2.csv')
-    scenario_df_err.to_csv('Scenarios_err_2.csv')
-    '''
-    #Custom scenarios
+    scenario_df.to_csv('Scenarios_vals_2_updated.csv')
+    scenario_df_err.to_csv('Scenarios_err_2_updated.csv')
     
+    #Custom scenarios
+    '''
     ref_rate_baseline = np.array([[0.0312,0.032,0.0325,0.0328,0.0333,0.0337,0.034,0.0343,0.0345,0.0347]])
     ref_rate_decrease = np.array([[0.0312,0.017857096,0.014390429,0.012803132,0.011204195,0.009781625,0.008536714,0.007449867,0.006501343,0.00567358]])
     ref_rate_increase = np.array([[0.0312,0.044542904,0.051382753,0.056012773,0.05951683,0.062362116,0.064761202,0.066835565,0.068666381,0.070303102]])
@@ -497,7 +502,7 @@ if __name__ == "__main__":
     custom_scenario(ref_rate_decrease, 'Decrease',100)
     print('Increase')
     custom_scenario(ref_rate_increase, 'Increase',100)
-    
+    '''
     #@Chenming - you can use the below snippet to get pvs
     '''
     
