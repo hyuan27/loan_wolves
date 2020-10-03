@@ -134,7 +134,7 @@ class Deal:
     def repo_price(self):
         """ Repo price """
         #repo_price = g._get_pv_by_path(as_of=3)
-        repo_price = 32
+        repo_price = 33
         return repo_price
         
     
@@ -305,10 +305,13 @@ if __name__ == "__main__":
     hullwhite = hw.HullWhiteModel()
     path_cmt, path_ted = hullwhite.simulate_math(num_paths)
 
+    ref_rate_decrease = np.array([[0.0312,0.017857096,0.014390429,0.012803132,0.011204195,0.009781625,0.008536714,0.007449867,0.006501343,0.00567358]])
+    ref_rate_increase = np.array([[0.0312,0.044542904,0.051382753,0.056012773,0.05951683,0.062362116,0.064761202,0.066835565,0.068666381,0.070303102]])
+    
+
     g = GNMA.GNMA()
-    g.sim_pay_schedule(path_cmt.T,init_prin)
-    
-    
+    g.sim_pay_schedule(ref_rate_increase.T,init_prin)
+
     print('PV at time 0 is ',g.get_pv())
     print('Repo price is ',g.get_pv(3))
     
@@ -344,9 +347,9 @@ if __name__ == "__main__":
     print(np.mean(d.hedge_margrabe_option(1,82,1)))
     print(np.mean(d.hedge_float_rate_note(10)))
 
-    #d.get_firm_and_client_cash_flows(False)
-    #d.get_firm_and_client_cash_flows_disc(True)
-    
+    d.get_firm_and_client_cash_flows(True)
+    d.get_firm_and_client_cash_flows_disc(True)
+    '''
     print('Firm discounted PNL')
     print(np.mean(d.get_firm_disc_pnl()))
 
@@ -363,3 +366,4 @@ if __name__ == "__main__":
     plt.xlabel('Profit')
     plt.title('PNL for CLIENT')
     plt.show()
+    '''

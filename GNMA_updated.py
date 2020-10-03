@@ -455,6 +455,80 @@ def generate_scenarios(bond_class):
     return scenario_df, scenario_df_err, gnma_instances
 
 
+def generate_scenarios_2(bond_class):
+
+    INF = 10000
+    init_prin = 100
+    num_paths = 100000
+    hullwhite = hw.HullWhiteModel()
+    path_cmt, path_ted = hullwhite.simulate_math(num_paths)
+
+    scenario = ['Vanilla', 'Add Prepayments', 'Add periodic cap', 'Add lifetime cap', 'Add periodic floor', 'Add lifetime floor/Current Bond']
+    
+    gnma_instances = []
+
+    #Scenario - Vanilla
+    gnma_instances.append(bond_class(lifetime_cap=INF, lifetime_floor=INF, periodic_cap=INF, periodic_floor=INF, base_CPR = 0, add_CPR_pct_inc = 0)) #Should just be a very big number
+    
+    #Scenario1 - Add prepayments
+    gnma_instances.append(bond_class(lifetime_cap=INF, lifetime_floor=INF, periodic_cap=INF, periodic_floor=INF)) #Should just be a very big number
+
+    #Scenario2 - Add periodic cap
+    gnma_instances.append(bond_class(lifetime_cap=INF, lifetime_floor=INF, periodic_floor=INF)) #Should just be a very big number
+    
+    #Scenario4 - Add lifetime cap
+    gnma_instances.append(bond_class(lifetime_floor=INF, periodic_floor=INF)) #Should just be a very big number
+    
+    #Scenario3 - Add lifetime floor
+    gnma_instances.append(bond_class(lifetime_floor=INF)) #Should just be a very big number
+    
+    #Scenario5 - Add periodic floor
+    gnma_instances.append(bond_class()) #Should just be a very big number
+
+    pv = []
+    repo_val = [] #At the end of 3 years
+    pv_int_payments = []
+    pv_prin_payments = []
+
+    pv_err = []
+    repo_val_err = [] #At the end of 3 years
+    pv_int_payments_err = []
+    pv_prin_payments_err = []
+
+    
+    for g in gnma_instances:
+        g.sim_pay_schedule(path_cmt.T,init_prin)
+        #Append means
+        pv.append(g.get_pv()[0])
+        repo_val.append(g.get_pv(3)[0])
+        pv_int_payments.append(g.get_pv_int_payments()[0])
+        pv_prin_payments.append(g.get_pv_prin_payments()[0])
+        #Append std errs
+        pv_err.append(g.get_pv()[1])
+        repo_val_err.append(g.get_pv(3)[1])
+        pv_int_payments_err.append(g.get_pv_int_payments()[1])
+        pv_prin_payments_err.append(g.get_pv_prin_payments()[1])
+
+
+    #Put them in a dataframe
+
+    scenario_df = pd.DataFrame({'Scenario': scenario,
+    'PV of bond': pv,
+    'Repo Value (3 yrs)': repo_val,
+    'PV of int payments': pv_int_payments,
+    'PV of prin payments': pv_prin_payments
+    })
+
+    scenario_df_err = pd.DataFrame({'Scenario': scenario,
+    'PV of bond': pv_err,
+    'Repo Value (3 yrs)': repo_val_err,
+    'PV of int payments': pv_int_payments_err,
+    'PV of prin payments': pv_prin_payments_err
+    })
+    
+    
+    return scenario_df, scenario_df_err, gnma_instances
+
 def custom_scenario(custom_ref_rate, name,init_prin):
 
     g = GNMA()
@@ -481,7 +555,14 @@ if __name__ == "__main__":
     #g.plot_payments()
     #g.plot_balance()
     
+    #Waterfall
+
+    scenario_df,scenario_df_err, gnma_instances = generate_scenarios_2(GNMA)    
+    scenario_df.to_csv('Scenarios_vals_2_updated.csv')
+    scenario_df_err.to_csv('Scenarios_err_2_updated.csv')
     
+    
+    '''
     scenario_df,scenario_df_err, gnma_instances = generate_scenarios(GNMA)    
 
     print(scenario_df)
@@ -489,7 +570,7 @@ if __name__ == "__main__":
 
     scenario_df.to_csv('Scenarios_vals_2_updated.csv')
     scenario_df_err.to_csv('Scenarios_err_2_updated.csv')
-    
+    '''
     #Custom scenarios
     '''
     ref_rate_baseline = np.array([[0.0312,0.032,0.0325,0.0328,0.0333,0.0337,0.034,0.0343,0.0345,0.0347]])
